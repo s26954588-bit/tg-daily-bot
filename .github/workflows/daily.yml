@@ -2,7 +2,7 @@ name: TG Daily Bot
 
 on:
   schedule:
-    - cron: '0 0,8 * * *'  # UTC 00:00 / 08:00 = 北京时间 08:00 / 16:00
+    - cron: '5 0,8 * * *'  # UTC 00:05 / 08:05 = 北京时间 08:05 / 16:05（错开整点高峰，避免被 GitHub 限流跳过）
   workflow_dispatch:
 
 jobs:
