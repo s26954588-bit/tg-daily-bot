@@ -1,8 +1,10 @@
 name: TG Daily Bot
 
 on:
-  # GitHub 自带的 schedule 触发不可靠（新建库跑了快 24 小时一次没自己触发过），
-  # 改由外部定时服务（cron-job.org）调用 workflow_dispatch API 来触发，不再用 schedule。
+  # GitHub 自带 schedule 目前不可靠（新建库跑了快 24 小时一次没自己触发过），
+  # 保留它当免费的"万一好了"备用，主力计划是之后配外部服务调 workflow_dispatch。
+  schedule:
+    - cron: '5 0,8 * * *'  # UTC 00:05 / 08:05 = 北京时间 08:05 / 16:05
   workflow_dispatch:
 
 jobs:
