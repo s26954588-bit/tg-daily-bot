@@ -56,34 +56,48 @@ async function getCrypto() {
   };
 }
 
-async function getHeadlines() {
+function getEdition() {
+  // 定时由外部服务触发：UTC 00:xx -> 北京早上（隔夜行情），UTC 08:xx -> 北京下午（盘中要闻）
+  return new Date().getUTCHours() < 4 ? 'morning' : 'afternoon';
+}
+
+async function fetchHotArticles() {
+  const data = await fetchJson(
+    'https://api-one.wallstcn.com/apiv1/content/articles/hot?period=all'
+  );
+  return (data?.data?.day_items || [])
+    .slice(0, 8)
+    .map((n) => ({ title: n.title, url: n.uri }));
+}
+
+async function fetchLives() {
+  const data = await fetchJson(
+    'https://api-one.wallstcn.com/apiv1/content/lives?channel=global-channel&limit=8'
+  );
+  return (data?.data?.items || []).slice(0, 8).map((n) => ({
+    title: (n.content_text || '').replace(/\s+/g, ' ').slice(0, 60),
+    url: n.uri,
+  }));
+}
+
+async function getHeadlines(edition) {
+  const [primary, fallback] =
+    edition === 'morning' ? [fetchHotArticles, fetchLives] : [fetchLives, fetchHotArticles];
   try {
-    const data = await fetchJson(
-      'https://api-one.wallstcn.com/apiv1/content/articles/hot?period=all'
-    );
-    const items = data?.data?.day_items || [];
-    if (items.length) {
-      return items.slice(0, 8).map((n) => ({ title: n.title, url: n.uri }));
-    }
+    const items = await primary();
+    if (items.length) return items;
   } catch (e) {
-    console.warn('wallstcn hot articles failed, trying lives:', e.message);
+    console.warn('primary headlines source failed, trying fallback:', e.message);
   }
   try {
-    const data = await fetchJson(
-      'https://api-one.wallstcn.com/apiv1/content/lives?channel=global-channel&limit=8'
-    );
-    const items = data?.data?.items || [];
-    return items.slice(0, 8).map((n) => ({
-      title: (n.content_text || '').replace(/\s+/g, ' ').slice(0, 60),
-      url: n.uri,
-    }));
+    return await fallback();
   } catch (e) {
-    console.warn('wallstcn lives failed:', e.message);
+    console.warn('fallback headlines source failed:', e.message);
     return [];
   }
 }
 
-function buildMessage({ metals, crypto, headlines }) {
+function buildMessage({ metals, crypto, headlines, edition }) {
   const today = new Date().toLocaleDateString('zh-TW', {
     month: 'numeric',
     day: 'numeric',
@@ -114,7 +128,8 @@ function buildMessage({ metals, crypto, headlines }) {
     `${arrow(crypto.doge.chg)} 24h: ${crypto.doge.chg.toFixed(2)}%`,
   ];
   if (headlines.length) {
-    lines.push('', '📰 <b>今日财经头条（华尔街见闻）</b>');
+    const label = edition === 'morning' ? '隔夜财经头条' : '盘中财经要闻';
+    lines.push('', `📰 <b>${label}（华尔街见闻）</b>`);
     for (const h of headlines) {
       lines.push(`• <a href="${esc(h.url)}">${esc(h.title)}</a>`);
     }
@@ -145,12 +160,13 @@ async function sendTelegram(text) {
     if (!DRY_RUN && (!TG_TOKEN || !TG_CHAT)) {
       throw new Error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env');
     }
+    const edition = getEdition();
     const [metals, crypto, headlines] = await Promise.all([
       getMetals(),
       getCrypto(),
-      getHeadlines(),
+      getHeadlines(edition),
     ]);
-    const text = buildMessage({ metals, crypto, headlines });
+    const text = buildMessage({ metals, crypto, headlines, edition });
     if (DRY_RUN) {
       console.log('--- DRY RUN: message preview ---');
       console.log(text);
