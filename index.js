@@ -5,6 +5,8 @@ const DRY_RUN = process.argv.includes('--dry');
 const GOLD_SPREAD = 0.66;
 const SILVER_SPREAD = 0.06;
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -15,12 +17,24 @@ const fmt = (n, d = 2) =>
   });
 
 async function fetchJson(url, opts = {}) {
-  const res = await fetch(url, {
-    ...opts,
-    headers: { 'User-Agent': 'tg-daily-bot/1.0', ...(opts.headers || {}) },
-  });
-  if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
-  return res.json();
+  const attempts = 3;
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, {
+        ...opts,
+        headers: { 'User-Agent': 'tg-daily-bot/1.0', ...(opts.headers || {}) },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      // 网络层失败（fetch failed / timeout）本身不带 URL，这里补上才知道是哪个源挂了
+      lastErr = e;
+      if (i < attempts - 1) await sleep(1000 * 2 ** i);
+    }
+  }
+  throw new Error(`${new URL(url).host} -> ${lastErr.message}`);
 }
 
 async function getMetals() {

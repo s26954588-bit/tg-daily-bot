@@ -10,6 +10,8 @@ on:
 jobs:
   send:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,3 +21,17 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      # 每周推一次空心跳 commit。GitHub 会在仓库满 60 天无活动时自动禁用定时
+      # workflow（2026-09-01 就是这样断的），有活动记录就不会再被禁用。
+      - name: Keepalive
+        if: always()
+        run: |
+          STAMP=$(date -u +%Y-W%V)
+          [ "$(cat .keepalive 2>/dev/null)" = "$STAMP" ] && exit 0
+          echo "$STAMP" > .keepalive
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .keepalive
+          git commit -m "chore: keepalive $STAMP"
+          git push
